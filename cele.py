@@ -25,15 +25,16 @@ data_dir = base_dir / 'data'
 Path(data_dir).mkdir(parents=True, exist_ok=True)
 
 # %% FUNCTIONS
-sheet_names=['Búsqueda español', 'Búsqueda portugués']
+#sheet_names=['Búsqueda español', 'Búsqueda portugués']
+# dfs_= []
+# for sh in sheet_names:
+#     df_ = pd.read_excel(data_dir/'2.xlsx', sheet_name=sh)
+#     df_['sheet'] = sh.split(' ')[-1]
+#     dfs_.append(df_)
+#
+# df = pd.concat(dfs_)
+df = pd.read_excel(data_dir/'2.xlsx')
 
-dfs_= []
-for sh in sheet_names:
-    df_ = pd.read_excel(data_dir/'1.xlsx', sheet_name=sh)
-    df_['sheet'] = sh.split(' ')[-1]
-    dfs_.append(df_)
-
-df = pd.concat(dfs_)
 df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 df = df.rename(columns={'Influencer':'screen_name', 'Twitter Followers':'followers'})
 
@@ -68,31 +69,31 @@ df['QT'] = df['Hit Sentence'].apply(lambda x: get_QT(x))
 df['M'] = df['Hit Sentence'].apply(lambda x: get_mentions(x))
 df['HT']= df['Hit Sentence'].apply(lambda x: get_HT(x))
 
+# %% LOWER CASE USEFULL COLUMNS
+df['screen_name'] = df['screen_name'].str.lower()  #lower case
+df.M = df.M.apply(lambda x: [s.lower() for s in x])
+
 # %% Cambio de las x por cosas entendibles
-x_columns = ['IRRELEVANTE', 'EVENTO','Competencia', 'Modelo', 'Diseño', 'Transparencia', 'Procesos',
+x_columns = ['EVENTO','Competencia', 'Modelo', 'Diseño', 'Transparencia', 'Procesos',
              'Corregulación', 'Consumidor', 'Responsabilidad', 'Utilidad',
              'Comportamiento', 'Informes, rendición',
              'Políticas, toma de decisiones', 'Riesgos, daños', 'Algoritmos']
-df[x_columns] =df[x_columns].replace(' ', np.nan).replace(['x','X'],1).fillna(0).astype(int)
-
-
-#df['IRRELEVANTE'] = (df['IRRELEVANTE'] * -1) + 1
+df[x_columns] =df[x_columns].replace(' ', np.nan).replace(['x','X','A'],1).fillna(0).astype(int)
 
 # %% productores sin RT
-prod = df.loc[(df.RT.isnull())].groupby(by='screen_name')\
-         .agg({'URL':'count', 'Engagement':'sum', 'followers':'max',
-               'IRRELEVANTE':'sum', 'EVENTO':'sum','Competencia':'sum', 'Modelo':'sum', 'Diseño':'sum',
-               'Transparencia':'sum', 'Procesos':'sum', 'Corregulación':'sum', 'Consumidor':'sum',
-               'Responsabilidad':'sum', 'Utilidad':'sum','Comportamiento':'sum', 'Informes, rendición':'sum',
-               'Políticas, toma de decisiones':'sum', 'Riesgos, daños':'sum', 'Algoritmos':'sum'})\
-         .sort_values(by=['URL','Engagement'], ascending=False).rename(columns={'URL':'count','Engagement':'engagement_sum'})\
-         .reset_index()
-prod['engagement_mean'] = prod['engagement_sum'] / prod['count']
-
-prod = prod[prod.columns.insert(3,'engagement_mean')[:-1]]
-
 with pd.ExcelWriter(data_dir/'productores.xlsx') as writer:
-    prod.to_excel(writer, sheet_name='Base', index=False, encoding='utf8')
+    for key, df_ in zip(['no_RT','todo'], [df.loc[(df.RT.isnull())], df]):
+        prod = df_.groupby(by='screen_name')\
+                 .agg({'URL':'count', 'Engagement':'sum', 'followers':'max', 'EVENTO':'sum','Competencia':'sum', 'Modelo':'sum', 'Diseño':'sum',
+                       'Transparencia':'sum', 'Procesos':'sum', 'Corregulación':'sum', 'Consumidor':'sum',
+                       'Responsabilidad':'sum', 'Utilidad':'sum','Comportamiento':'sum', 'Informes, rendición':'sum',
+                       'Políticas, toma de decisiones':'sum', 'Riesgos, daños':'sum', 'Algoritmos':'sum'})\
+                 .sort_values(by=['URL','Engagement'], ascending=False).rename(columns={'URL':'count','Engagement':'engagement_sum'})\
+                 .reset_index()
+        prod['engagement_mean'] = prod['engagement_sum'] / prod['count']
+
+        prod = prod[prod.columns.insert(3,'engagement_mean')[:-1]]
+        prod.to_excel(writer, sheet_name='Base', index=False, encoding='utf8', sheet_name = key)
 
 # %% HTS
 with pd.ExcelWriter(data_dir/'hashtags.xlsx') as writer:
