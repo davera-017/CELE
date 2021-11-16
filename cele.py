@@ -38,6 +38,39 @@ df = pd.read_excel(data_dir/'2.xlsx')
 df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 df = df.rename(columns={'Influencer':'screen_name', 'Twitter Followers':'followers'})
 
+def change_format(df):
+    df.rename(columns= {'Date':'created_at',
+                        'Tweet Id':'id',
+                        'Twitter Id': 'twitter_id',
+                        'Hit Sentence':'text',
+                        'Influencer':'screen_name',
+                        'Twitter Screen Name':'name',
+                        'Engagement':'engagement',
+                        'Twitter Followers':'followers'}, inplace=True)
+
+    df.created_at = pd.to_datetime(df.created_at) #Cambio de formato para columna de fechas
+
+    # Le quita unas comillas que tienen los ids
+    #df['id'] = df['id'].apply(lambda x: re.sub('[^0-9]','', x))
+    #df['twitter_id'] = df['twitter_id'].apply(lambda x: re.sub('[^0-9]','', x))
+
+    #Arreglo de formato para columnas numéricas
+    num_cols = ['id','twitter_id', 'engagement','followers']
+    df[num_cols] = df[num_cols].replace('',np.nan) #replace empty values with NaN to standarize missing values
+    df = df.fillna(0) #fill NaN with 0 in numeric columns
+    df[['engagement','followers']] = df[['engagement','followers']].astype(int) #change format
+
+    return df
+
+df = change_format(df)
+
+# %% Cambio de las x por cosas entendibles
+x_columns = ['EVENTO','Competencia', 'Modelo', 'Diseño', 'Transparencia', 'Procesos',
+             'Corregulación', 'Consumidor', 'Responsabilidad', 'Utilidad',
+             'Comportamiento', 'Informes, rendición',
+             'Políticas, toma de decisiones', 'Riesgos, daños', 'Algoritmos']
+df[x_columns] =df[x_columns].replace(' ', np.nan).replace(['x','X','A'],1).fillna(0).astype(int)
+
 # %% RT and MENTIONS
 def get_RT(text):
     try:
@@ -64,48 +97,44 @@ def get_mentions(text):
 def get_HT(text):
     return re.findall('(#[\w+]+[\w+]+)', text)
 
-df['RT'] = df['Hit Sentence'].apply(lambda x: get_RT(x))
-df['QT'] = df['Hit Sentence'].apply(lambda x: get_QT(x))
-df['M'] = df['Hit Sentence'].apply(lambda x: get_mentions(x))
-df['HT']= df['Hit Sentence'].apply(lambda x: get_HT(x))
+df['RT'] = df['text'].apply(lambda x: get_RT(x))
+df['QT'] = df['text'].apply(lambda x: get_QT(x))
+df['M'] = df['text'].apply(lambda x: get_mentions(x))
+df['HT']= df['text'].apply(lambda x: get_HT(x))
 
 # %% LOWER CASE USEFULL COLUMNS
 df['screen_name'] = df['screen_name'].str.lower()  #lower case
 df.M = df.M.apply(lambda x: [s.lower() for s in x])
 
-# %% Cambio de las x por cosas entendibles
-x_columns = ['EVENTO','Competencia', 'Modelo', 'Diseño', 'Transparencia', 'Procesos',
-             'Corregulación', 'Consumidor', 'Responsabilidad', 'Utilidad',
-             'Comportamiento', 'Informes, rendición',
-             'Políticas, toma de decisiones', 'Riesgos, daños', 'Algoritmos']
-df[x_columns] =df[x_columns].replace(' ', np.nan).replace(['x','X','A'],1).fillna(0).astype(int)
 
-# %% productores sin RT
+# %% PRODUCTORES
 with pd.ExcelWriter(data_dir/'productores.xlsx') as writer:
     for key, df_ in zip(['no_RT','todo'], [df.loc[(df.RT.isnull())], df]):
         prod = df_.groupby(by='screen_name')\
-                 .agg({'URL':'count', 'Engagement':'sum', 'followers':'max', 'EVENTO':'sum','Competencia':'sum', 'Modelo':'sum', 'Diseño':'sum',
+                 .agg({'URL':'count', 'engagement':'sum', 'followers':'max', 'EVENTO':'sum','Competencia':'sum', 'Modelo':'sum', 'Diseño':'sum',
                        'Transparencia':'sum', 'Procesos':'sum', 'Corregulación':'sum', 'Consumidor':'sum',
                        'Responsabilidad':'sum', 'Utilidad':'sum','Comportamiento':'sum', 'Informes, rendición':'sum',
                        'Políticas, toma de decisiones':'sum', 'Riesgos, daños':'sum', 'Algoritmos':'sum'})\
-                 .sort_values(by=['URL','Engagement'], ascending=False).rename(columns={'URL':'count','Engagement':'engagement_sum'})\
+                 .sort_values(by=['URL','engagement'], ascending=False).rename(columns={'URL':'count','engagement':'engagement_sum'})\
                  .reset_index()
+
+
         prod['engagement_mean'] = prod['engagement_sum'] / prod['count']
 
         prod = prod[prod.columns.insert(3,'engagement_mean')[:-1]]
-        prod.to_excel(writer, sheet_name='Base', index=False, encoding='utf8', sheet_name = key)
+        prod.to_excel(writer, sheet_name=key, index=False, encoding='utf8')
 
 # %% HTS
 with pd.ExcelWriter(data_dir/'hashtags.xlsx') as writer:
-    for sh in df.sheet.unique():
-        df_ = df.loc[df.sheet == sh]
-        counter = Counter(df_.HT.sum())
+    #for sh in df.sheet.unique():
+    df_ = df#.loc[df.sheet == sh]
+    counter = Counter(df_.HT.sum())
 
-        HTs = pd.DataFrame.from_records(list(dict(counter).items()), columns=['HT','count'])\
-                .sort_values(by='count',ascending=False)\
-                .head(100)
+    HTs = pd.DataFrame.from_records(list(dict(counter).items()), columns=['HT','count'])\
+            .sort_values(by='count',ascending=False)\
+            .head(100)
 
-        HTs.to_excel(writer, sheet_name=sh, index=False, encoding='utf8')
+    HTs.to_excel(writer, sheet_name='Base', index=False, encoding='utf8')
 
 # %% EDGES
 dfs_ =[]
